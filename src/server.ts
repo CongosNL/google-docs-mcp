@@ -38,7 +38,7 @@ console.error("Attempting to authorize Google API client...");
 const client = await authorize();
 authClient = client; // Assign client here
 googleDocs = google.docs({ version: 'v1', auth: authClient });
-googleDrive = google.drive({ version: 'v3', auth: authClient });
+googleDrive = google.drive({ version: 'v3', auth: authClient, params: { supportsAllDrives: true } });
 googleSheets = google.sheets({ version: 'v4', auth: authClient });
 console.error("Google API client authorized successfully.");
 } catch (error) {
@@ -56,7 +56,7 @@ if (authClient && !googleDocs) {
 googleDocs = google.docs({ version: 'v1', auth: authClient });
 }
 if (authClient && !googleDrive) {
-googleDrive = google.drive({ version: 'v3', auth: authClient });
+googleDrive = google.drive({ version: 'v3', auth: authClient, params: { supportsAllDrives: true } });
 }
 if (authClient && !googleSheets) {
 googleSheets = google.sheets({ version: 'v4', auth: authClient });
@@ -1244,7 +1244,7 @@ server.addTool({
       const doc = await docsClient.documents.get({ documentId: args.documentId });
 
       // Use Drive API v3 with proper fields to get quoted content
-      const drive = google.drive({ version: 'v3', auth: authClient! });
+      const drive = google.drive({ version: 'v3', auth: authClient!, params: { supportsAllDrives: true } });
       const response = await drive.comments.list({
         fileId: args.documentId,
         fields: 'comments(id,content,quotedFileContent,author,createdTime,resolved)',
@@ -1298,7 +1298,7 @@ server.addTool({
     log.info(`Getting comment ${args.commentId} from document ${args.documentId}`);
 
     try {
-      const drive = google.drive({ version: 'v3', auth: authClient! });
+      const drive = google.drive({ version: 'v3', auth: authClient!, params: { supportsAllDrives: true } });
       const response = await drive.comments.get({
         fileId: args.documentId,
         commentId: args.commentId,
@@ -1377,7 +1377,7 @@ server.addTool({
       }
 
       // Use Drive API v3 for comments
-      const drive = google.drive({ version: 'v3', auth: authClient! });
+      const drive = google.drive({ version: 'v3', auth: authClient!, params: { supportsAllDrives: true } });
 
       const response = await drive.comments.create({
         fileId: args.documentId,
@@ -1421,7 +1421,7 @@ server.addTool({
     log.info(`Adding reply to comment ${args.commentId} in doc ${args.documentId}`);
 
     try {
-      const drive = google.drive({ version: 'v3', auth: authClient! });
+      const drive = google.drive({ version: 'v3', auth: authClient!, params: { supportsAllDrives: true } });
 
       const response = await drive.replies.create({
         fileId: args.documentId,
@@ -1451,7 +1451,7 @@ server.addTool({
     log.info(`Resolving comment ${args.commentId} in doc ${args.documentId}`);
 
     try {
-      const drive = google.drive({ version: 'v3', auth: authClient! });
+      const drive = google.drive({ version: 'v3', auth: authClient!, params: { supportsAllDrives: true } });
 
       // First, get the current comment content (required by the API)
       const currentComment = await drive.comments.get({
@@ -1503,7 +1503,7 @@ server.addTool({
     log.info(`Deleting comment ${args.commentId} from doc ${args.documentId}`);
 
     try {
-      const drive = google.drive({ version: 'v3', auth: authClient! });
+      const drive = google.drive({ version: 'v3', auth: authClient!, params: { supportsAllDrives: true } });
 
       await drive.comments.delete({
         fileId: args.documentId,
@@ -1635,6 +1635,8 @@ try {
     pageSize: args.maxResults,
     orderBy: args.orderBy === 'name' ? 'name' : args.orderBy,
     fields: 'files(id,name,modifiedTime,createdTime,size,webViewLink,owners(displayName,emailAddress))',
+    includeItemsFromAllDrives: true,
+    corpora: 'allDrives',
   });
 
   const files = response.data.files || [];
@@ -1698,6 +1700,8 @@ try {
     pageSize: args.maxResults,
     orderBy: 'modifiedTime desc',
     fields: 'files(id,name,modifiedTime,createdTime,webViewLink,owners(displayName),parents)',
+    includeItemsFromAllDrives: true,
+    corpora: 'allDrives',
   });
 
   const files = response.data.files || [];
@@ -1749,6 +1753,8 @@ try {
     pageSize: args.maxResults,
     orderBy: 'modifiedTime desc',
     fields: 'files(id,name,modifiedTime,createdTime,webViewLink,owners(displayName),lastModifyingUser(displayName))',
+    includeItemsFromAllDrives: true,
+    corpora: 'allDrives',
   });
 
   const files = response.data.files || [];
@@ -1911,6 +1917,8 @@ try {
     pageSize: args.maxResults,
     orderBy: 'folder,name',
     fields: 'files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName))',
+    includeItemsFromAllDrives: true,
+    corpora: 'allDrives',
   });
 
   const items = response.data.files || [];
@@ -2620,6 +2628,8 @@ execute: async (args, { log }) => {
       pageSize: args.maxResults,
       orderBy: args.orderBy === 'name' ? 'name' : args.orderBy,
       fields: 'files(id,name,modifiedTime,createdTime,size,webViewLink,owners(displayName,emailAddress))',
+      includeItemsFromAllDrives: true,
+      corpora: 'allDrives',
     });
 
     const files = response.data.files || [];
