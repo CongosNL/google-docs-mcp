@@ -1731,6 +1731,111 @@ try {
 });
 
 server.addTool({
+name: 'searchDriveFiles',
+description: 'Searches for files of ANY type in Google Drive (images, PDFs, spreadsheets, etc). Use this instead of searchGoogleDocs when you need to find non-document files like logos, assets, or attachments.',
+parameters: z.object({
+  searchQuery: z.string().min(1).describe('Search term to find in file names or content.'),
+  mimeType: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.+]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.+]*$/).optional().describe('Optional MIME type filter, e.g. "image/png", "application/pdf", "image/svg+xml".'),
+  folderId: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional().describe('Optional folder ID to search within a specific folder.'),
+  maxResults: z.number().int().min(1).max(50).optional().default(20).describe('Maximum number of results to return.'),
+}),
+execute: async (args, { log }) => {
+const drive = await getDriveClient();
+log.info(`Searching Drive files for: "${args.searchQuery}" (mimeType: ${args.mimeType || 'any'}, folderId: ${args.folderId || 'all'})`);
+
+try {
+  const escaped = args.searchQuery.replace(/'/g, "\\'");
+  let queryString = "trashed=false";
+
+  if (args.mimeType) {
+    const escapedMimeType = args.mimeType.replace(/'/g, "\\'");
+    queryString += ` and mimeType='${escapedMimeType}'`;
+  }
+  if (args.folderId) {
+    const escapedFolderId = args.folderId.replace(/'/g, "\\'");
+    queryString += ` and '${escapedFolderId}' in parents`;
+  }
+  queryString += ` and (name contains '${escaped}' or fullText contains '${escaped}')`;
+
+  const response = await drive.files.list({
+    q: queryString,
+    pageSize: args.maxResults,
+    orderBy: 'modifiedTime desc',
+    fields: 'files(id,name,mimeType,size,modifiedTime,createdTime,webViewLink,webContentLink,owners(displayName),parents)',
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true,
+    corpora: 'allDrives',
+  });
+
+  const files = response.data.files || [];
+
+  if (files.length === 0) {
+    return `No files found matching "${args.searchQuery}".`;
+  }
+
+  let result = `Found ${files.length} file(s) matching "${args.searchQuery}":\n\n`;
+  files.forEach((file, index) => {
+    const modifiedDate = file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : 'Unknown';
+    const owner = file.owners?.[0]?.displayName || 'Unknown';
+    const size = file.size ? `${(parseInt(file.size) / 1024).toFixed(1)} KB` : 'N/A';
+    result += `${index + 1}. **${file.name}**\n`;
+    result += `   ID: ${file.id}\n`;
+    result += `   Type: ${file.mimeType}\n`;
+    result += `   Size: ${size}\n`;
+    result += `   Modified: ${modifiedDate}\n`;
+    result += `   Owner: ${owner}\n`;
+    result += `   Link: ${file.webViewLink || file.webContentLink || 'N/A'}\n\n`;
+  });
+
+  return result;
+} catch (error: any) {
+  log.error(`Error searching Drive files: ${error.message || error}`);
+  if (error.code === 403) throw new UserError("Permission denied. Make sure you have granted Google Drive access to the application.");
+  throw new UserError(`Failed to search files: ${error.message || 'Unknown error'}`);
+}
+}
+});
+
+server.addTool({
+name: 'listSharedDrives',
+description: 'Lists all Shared Drives accessible to the authenticated user. Useful for discovering drive IDs to use with other tools.',
+parameters: z.object({
+  maxResults: z.number().int().min(1).max(100).optional().default(100).describe('Maximum number of Shared Drives to return.'),
+}),
+execute: async (args, { log }) => {
+const drive = await getDriveClient();
+log.info('Listing Shared Drives');
+
+try {
+  const response = await drive.drives.list({
+    pageSize: args.maxResults,
+    fields: 'drives(id,name,createdTime)',
+  });
+
+  const drives = response.data.drives || [];
+
+  if (drives.length === 0) {
+    return 'No Shared Drives found.';
+  }
+
+  let result = `Found ${drives.length} Shared Drive(s):\n\n`;
+  drives.forEach((d, index) => {
+    const createdDate = d.createdTime ? new Date(d.createdTime).toLocaleDateString() : 'Unknown';
+    result += `${index + 1}. **${d.name}**\n`;
+    result += `   ID: ${d.id}\n`;
+    result += `   Created: ${createdDate}\n\n`;
+  });
+
+  return result;
+} catch (error: any) {
+  log.error(`Error listing Shared Drives: ${error.message || error}`);
+  if (error.code === 403) throw new UserError("Permission denied. Make sure you have access to Shared Drives.");
+  throw new UserError(`Failed to list Shared Drives: ${error.message || 'Unknown error'}`);
+}
+}
+});
+
+server.addTool({
 name: 'getRecentGoogleDocs',
 description: 'Gets the most recently modified Google Documents.',
 parameters: z.object({
