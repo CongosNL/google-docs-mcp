@@ -218,4 +218,46 @@ More content.`;
       assert.strictEqual(styleReqs.length, 0, 'Should not have style requests for plain text');
     });
   });
+  // Index model measured against the live API: insertTable at i puts a newline
+  // before the table, so the table starts at i+1 and an empty R x C table spans
+  // 2 + R*(1+2C) indexes; cell (r,c) paragraph sits at T + 3 + r*(1+2C) + 2c.
+  describe('Tables', () => {
+    const inserts = (requests) => requests.filter(r => r.insertText).map(r => [r.insertText.location.index, r.insertText.text]);
+
+    it('should insert a real table with the header row size', () => {
+      const requests = convertMarkdownToRequests('| A | B |\n|---|---|\n| c | d |', 1);
+      const tableReq = requests.find(r => r.insertTable);
+      assert.ok(tableReq, 'Should have insertTable request');
+      assert.strictEqual(tableReq.insertTable.rows, 2);
+      assert.strictEqual(tableReq.insertTable.columns, 2);
+      assert.strictEqual(tableReq.insertTable.location.index, 1);
+    });
+
+    it('should fill each cell at its paragraph index, shifted by text already inserted', () => {
+      const requests = convertMarkdownToRequests('| A | B |\n|---|---|\n| c | d |', 1);
+      assert.deepStrictEqual(inserts(requests), [[5, 'A'], [8, 'B'], [12, 'c'], [15, 'd']]);
+    });
+
+    it('should make header cells bold and keep inline formatting in body cells', () => {
+      const requests = convertMarkdownToRequests('| A | B |\n|---|---|\n| c | **d** |', 1);
+      const bold = requests.filter(r => r.updateTextStyle && r.updateTextStyle.textStyle.bold)
+        .map(r => [r.updateTextStyle.range.startIndex, r.updateTextStyle.range.endIndex]);
+      assert.deepStrictEqual(bold, [[5, 6], [8, 9], [15, 16]]);
+    });
+
+    it('should continue content after the table at the right index', () => {
+      const requests = convertMarkdownToRequests('| A |\n|---|\n| c |\n\n## Next', 1);
+      assert.deepStrictEqual(inserts(requests).slice(0, 3), [[5, 'A'], [9, 'c'], [12, 'Next']]);
+      const heading = requests.find(r => r.updateParagraphStyle);
+      assert.strictEqual(heading.updateParagraphStyle.range.startIndex, 12);
+      assert.strictEqual(heading.updateParagraphStyle.paragraphStyle.namedStyleType, 'HEADING_2');
+    });
+
+    it('should leave empty cells empty and pad short rows to the header width', () => {
+      const requests = convertMarkdownToRequests('| A | B |\n|---|---|\n| c |', 1);
+      const tableReq = requests.find(r => r.insertTable);
+      assert.strictEqual(tableReq.insertTable.columns, 2);
+      assert.deepStrictEqual(inserts(requests), [[5, 'A'], [8, 'B'], [12, 'c']]);
+    });
+  });
 });

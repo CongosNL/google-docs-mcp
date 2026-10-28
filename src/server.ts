@@ -685,7 +685,7 @@ try {
 
 server.addTool({
 name: 'replaceDocumentWithMarkdown',
-description: 'Replaces the entire content of a Google Document with markdown-formatted content. Supports headings (# H1-###### H6), bold (**bold**), italic (*italic*), strikethrough (~~strike~~), links ([text](url)), and lists (bullet and numbered).',
+description: 'Replaces the entire content of a Google Document with markdown-formatted content. Supports headings (# H1-###### H6), bold (**bold**), italic (*italic*), strikethrough (~~strike~~), links ([text](url)), lists (bullet and numbered), and GFM tables (header row bold).',
 parameters: DocumentIdParameter.extend({
 markdown: z.string().min(1).describe('The markdown content to apply to the document.'),
 preserveTitle: z.boolean().optional().default(false)

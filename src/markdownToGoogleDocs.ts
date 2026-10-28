@@ -90,9 +90,17 @@ export function convertMarkdownToRequests(
   };
 
   try {
-    // Process all tokens
-    for (const token of parsed.tokens) {
-      processToken(token, context);
+    // Process all tokens; a table needs its full size up front, so it is consumed as one block
+    const tokens = parsed.tokens;
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].type === 'table_open') {
+        let end = i;
+        while (end < tokens.length && tokens[end].type !== 'table_close') end++;
+        handleTable(tokens.slice(i, end + 1), context);
+        i = end;
+        continue;
+      }
+      processToken(tokens[i], context);
     }
 
     // Finalize any pending formatting
@@ -214,13 +222,8 @@ function processToken(token: Token, context: ConversionContext): void {
       }
       break;
 
-    // Tables (basic support)
+    // Ignore these tokens (structural; tables are handled as a block by handleTable)
     case 'table_open':
-      // Tables are complex - we'll skip for now and add in a future enhancement
-      // throw new MarkdownConversionError('Table conversion not yet implemented');
-      break;
-
-    // Ignore these tokens (structural)
     case 'tbody_open':
     case 'tbody_close':
     case 'thead_open':
@@ -244,6 +247,53 @@ function processToken(token: Token, context: ConversionContext): void {
       // console.warn(`Unhandled token type: ${token.type}`);
       break;
   }
+}
+
+// --- Table Handling ---
+
+// The Docs API puts a newline before an inserted table, so the table starts one index
+// later; an empty R x C table spans 2 + R*(1+2C) indexes (table, row and cell markers
+// plus one empty paragraph per cell). Cells are filled front to back, so each cell
+// shifts by the text already inserted in earlier cells.
+function handleTable(tokens: Token[], context: ConversionContext): void {
+  const rows: { cells: Token[]; header: boolean }[] = [];
+  let inHead = false;
+  for (const token of tokens) {
+    if (token.type === 'thead_open') inHead = true;
+    else if (token.type === 'thead_close') inHead = false;
+    else if (token.type === 'tr_open') rows.push({ cells: [], header: inHead });
+    else if (token.type === 'inline' && rows.length > 0) rows[rows.length - 1].cells.push(token);
+  }
+  if (rows.length === 0) return;
+
+  const columns = Math.max(...rows.map(row => row.cells.length));
+  const location: any = { index: context.currentIndex };
+  if (context.tabId) {
+    location.tabId = context.tabId;
+  }
+  context.insertRequests.push({
+    insertTable: { rows: rows.length, columns, location }
+  });
+
+  const tableStart = context.currentIndex + 1;
+  const rowSize = 1 + 2 * columns;
+  let inserted = 0;
+
+  rows.forEach((row, r) => {
+    for (let c = 0; c < columns; c++) {
+      context.currentIndex = tableStart + 3 + r * rowSize + 2 * c + inserted;
+      const before = context.currentIndex;
+      const cell = row.cells[c];
+      if (cell) {
+        if (row.header) context.formattingStack.push({ bold: true });
+        processToken(cell, context);
+        if (row.header) popFormatting(context, 'bold');
+      }
+      inserted += context.currentIndex - before;
+    }
+  });
+
+  context.currentIndex = tableStart + 2 + rows.length * rowSize + inserted;
 }
 
 // --- Heading Handlers ---
